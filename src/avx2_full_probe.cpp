@@ -544,11 +544,17 @@ static void test_bmi() {
         uint32_t r = _tzcnt_u32(x); // 2 trailing zeros
         report("_tzcnt_u32", r == 2);
     }
-    // LZCNT via __builtin
+    // LZCNT: leading zeros
     {
         uint32_t x = 1u << 20;
-        int r = __builtin_clz(x); // 32-21=11
-        report("__builtin_clz (LZCNT)", r == 11);
+#ifdef _MSC_VER
+        unsigned long idx = 0;
+        _BitScanReverse(&idx, x);
+        int r = 31 - (int)idx;
+#else
+        int r = __builtin_clz(x);
+#endif
+        report("CLZ / LZCNT (leading zeros)", r == 11);
     }
     if (!has_bmi2) { printf("  BMI2: SKIPPED\n"); return; }
 
