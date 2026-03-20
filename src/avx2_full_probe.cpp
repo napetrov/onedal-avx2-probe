@@ -554,17 +554,17 @@ static void test_bmi() {
 
     // PEXT: parallel bits extract
     {
+        // x=0b11001010, mask=0b01010101 → positions 0,2,4,6 → x-bits: 0,0,0,1 → result=0b1000=8
         uint32_t x = 0b11001010, mask = 0b01010101;
-        uint32_t r = _pext_u32(x, mask); // extract bits at mask positions
-        // mask bits at pos 0,2,4,6 → x bits: 0,0,1,0 → 0b0010 = 2
-        report("_pext_u32 (BMI2)", r == 2);
+        uint32_t r = _pext_u32(x, mask);
+        report("_pext_u32 (BMI2)", r == 8u);
     }
     // PDEP: parallel bits deposit
     {
+        // x=0b0110, mask=0b10101010 → pos1←0,pos3←1,pos5←1,pos7←0 → 0b00101000=0x28
         uint32_t x = 0b0110, mask = 0b10101010;
         uint32_t r = _pdep_u32(x, mask);
-        // deposit bits of x into mask positions: bit0→pos1, bit1→pos3 → 0b00001100
-        report("_pdep_u32 (BMI2)", r == 0b00001100u);
+        report("_pdep_u32 (BMI2)", r == 0x28u);
     }
 }
 #endif // ARCH_X86
