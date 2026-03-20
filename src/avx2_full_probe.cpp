@@ -7,8 +7,21 @@
  *   - Gather loads
  *   - Bitwise / shift / compare
  *   - Blend / mask
+ *   - Type conversions
+ *   - BMI1/BMI2
  *
- * Build:  g++ -O2 -mavx2 -mfma -o avx2_full_probe src/avx2_full_probe.cpp
+ * Build Linux/macOS:
+ *   g++ -O2 -mavx2 -mfma -mbmi -mbmi2 -o avx2_full_probe src/avx2_full_probe.cpp -lm
+ *
+ * Build Windows (MSVC):
+ *   cl /O2 /arch:AVX2 /EHsc src/avx2_full_probe.cpp /Fe:avx2_full_probe.exe
+ *
+ * Build Windows (MinGW/clang-cl):
+ *   g++ -O2 -mavx2 -mfma -mbmi -mbmi2 -o avx2_full_probe.exe src/avx2_full_probe.cpp
+ *
+ * macOS Apple Silicon (M1/M2/M3):
+ *   The probe will detect NO AVX2 (ARM CPU) and exit gracefully.
+ *
  * Output: per-bucket PASS/FAIL + final verdict
  */
 
@@ -16,13 +29,30 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
-#include <immintrin.h>
-#include <cpuid.h>
+
+// ─── Platform detection ──────────────────────────────────────────────────────
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__)
+  // Apple Silicon or ARM — no x86 intrinsics
+  #define ARCH_ARM 1
+#else
+  #define ARCH_X86 1
+  #include <immintrin.h>
+  #ifdef _WIN32
+    #include <intrin.h>
+    #define CPUID(info, leaf)        __cpuid((int*)(info), (int)(leaf))
+    #define CPUIDEX(info, leaf, sub) __cpuidex((int*)(info), (int)(leaf), (int)(sub))
+    static inline uint64_t _xgetbv_val(unsigned idx) { return _xgetbv(idx); }
+  #else
+    #include <cpuid.h>
+    #define CPUID(info, leaf)        __cpuid(leaf, info[0], info[1], info[2], info[3])
+    #define CPUIDEX(info, leaf, sub) __cpuid_count(leaf, sub, info[0], info[1], info[2], info[3])
+    static inline uint64_t _xgetbv_val(unsigned idx) {
+        uint64_t v; __asm__ volatile("xgetbv" : "=A"(v) : "c"(idx)); return v;
+    }
+  #endif
+#endif
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-#define CPUID(info, leaf)        __cpuid(leaf, info[0], info[1], info[2], info[3])
-#define CPUIDEX(info, leaf, sub) __cpuid_count(leaf, sub, info[0], info[1], info[2], info[3])
-
 static int g_pass = 0, g_fail = 0;
 
 static void report(const char* name, int ok) {
@@ -35,6 +65,12 @@ static void section(const char* name) {
 }
 
 // ─── CPUID / OS detection ───────────────────────────────────────────────────
+#ifdef ARCH_ARM
+static void get_cpu_brand(char* out) { strcpy(out, "ARM / Apple Silicon"); }
+static int has_avx2=0, has_fma=0, has_avx512f=0, has_avx512bw=0, has_avx512vl=0;
+static int has_bmi1=0, has_bmi2=0, os_avx_ok=0;
+static void detect_features() {}
+#else
 static void get_cpu_brand(char* out) {
     int info[4];
     CPUID(info, 0x80000000);
@@ -64,13 +100,14 @@ static void detect_features() {
 
     os_avx_ok = 0;
     if (osxsave) {
-        uint64_t xcr0;
-        __asm__ volatile("xgetbv" : "=A"(xcr0) : "c"(0));
+        uint64_t xcr0 = _xgetbv_val(0);
         os_avx_ok = (xcr0 & 0x6) == 0x6;
     }
 }
+#endif // ARCH_ARM
 
 // ─── Bucket 1: Integer arithmetic ────────────────────────────────────────────
+#ifdef ARCH_X86
 static void test_integer_arith() {
     section("BUCKET 1: Integer Arithmetic (epi8/16/32/64)");
 
@@ -530,6 +567,7 @@ static void test_bmi() {
         report("_pdep_u32 (BMI2)", r == 0b00001100u);
     }
 }
+#endif // ARCH_X86
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 int main() {
@@ -541,6 +579,15 @@ int main() {
     printf(" AVX2 Full Probe — oneDAL Baseline Investigation\n");
     printf("=============================================================\n");
     printf("CPU:      %s\n", brand);
+
+#ifdef ARCH_ARM
+    printf("ARCH:     ARM / Apple Silicon\n");
+    printf("\n=== VERDICT ===\n");
+    printf("  ⚠️  ARM CPU — AVX2 is x86-only, not applicable here.\n");
+    printf("     oneDAL AVX2 baseline would NOT apply to this platform.\n");
+    printf("=============================================================\n");
+    return 2;
+#else
     printf("CPUID:    AVX2=%s  FMA=%s  BMI1=%s  BMI2=%s  AVX512F=%s\n",
            has_avx2?"YES":"NO", has_fma?"YES":"NO",
            has_bmi1?"YES":"NO", has_bmi2?"YES":"NO", has_avx512f?"YES":"NO");
@@ -572,4 +619,5 @@ int main() {
     }
     printf("=============================================================\n");
     return g_fail > 0 ? 1 : 0;
+#endif // !ARCH_ARM
 }

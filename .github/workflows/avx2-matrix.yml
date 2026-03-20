@@ -6,51 +6,134 @@ on:
     branches: [ main ]
 
 jobs:
-  github-hosted-linux:
+  # ─── Linux (GitHub-hosted) ───────────────────────────────────────────────
+  linux:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runs_on }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: github ubuntu-20.04 x64
+          - name: linux ubuntu-20.04 x64
             runs_on: ubuntu-20.04
-          - name: github ubuntu-22.04 x64
+          - name: linux ubuntu-22.04 x64
             runs_on: ubuntu-22.04
-          - name: github ubuntu-24.04 x64
+          - name: linux ubuntu-24.04 x64
             runs_on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Build+Run full AVX2 probe
+      - name: Install g++
+        run: sudo apt-get update -q && sudo apt-get install -y g++
+      - name: Build + Run
         run: bash scripts/run_probe.sh
-      - name: Upload probe logs
+      - name: Show CPU flags
+        run: |
+          grep -m1 "model name" /proc/cpuinfo || true
+          grep -m1 "^flags" /proc/cpuinfo | tr ' ' '\n' | grep -E "avx|sse|fma|bmi" | sort || true
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: probe-${{ matrix.name }}
           path: out/
 
-  provider-self-hosted:
+  # ─── macOS (GitHub-hosted) ───────────────────────────────────────────────
+  macos:
     name: ${{ matrix.name }}
-    if: ${{ false }} # Enable after adding matching self-hosted labels
     runs-on: ${{ matrix.runs_on }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: aws x64
+          # Intel Mac (x86_64) — AVX2 should work
+          - name: macos-13 intel x86_64
+            runs_on: macos-13
+            arch: x86_64
+          # Apple Silicon (arm64) — AVX2 not applicable, probe exits gracefully
+          - name: macos-14 apple-silicon arm64
+            runs_on: macos-14
+            arch: arm64
+          - name: macos-15 apple-silicon arm64
+            runs_on: macos-15
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show CPU info
+        run: |
+          uname -m
+          sysctl -n machdep.cpu.brand_string 2>/dev/null || true
+          sysctl -n hw.optional.avx2_0 2>/dev/null && echo "AVX2 sysctl: supported" || echo "AVX2 sysctl: NOT reported"
+      - name: Build + Run (Intel)
+        if: matrix.arch == 'x86_64'
+        run: |
+          CXX=g++ CXXFLAGS="-O2 -mavx2 -mfma -mbmi -mbmi2" bash scripts/run_probe.sh
+        continue-on-error: true
+      - name: Build + Run (Apple Silicon — ARM, no AVX2)
+        if: matrix.arch == 'arm64'
+        run: |
+          # On ARM, probe should detect ARM and exit gracefully (rc=2)
+          CXX=clang++ CXXFLAGS="-O2" bash scripts/run_probe.sh || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-${{ matrix.name }}
+          path: out/
+
+  # ─── Windows (GitHub-hosted) ─────────────────────────────────────────────
+  windows:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-2022 x64 msvc
+            runs_on: windows-2022
+            compiler: msvc
+          - name: windows-2019 x64 msvc
+            runs_on: windows-2019
+            compiler: msvc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build + Run (MSVC)
+        shell: cmd
+        run: scripts\run_probe.bat
+        continue-on-error: true
+      - name: Show CPU info (Windows)
+        shell: pwsh
+        run: |
+          Get-WmiObject -Class Win32_Processor | Select-Object Name, NumberOfCores | Format-List
+          (Get-WmiObject -Class Win32_Processor).Description
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-${{ matrix.name }}
+          path: out/
+
+  # ─── Self-hosted cloud runners (uncomment labels to enable) ───────────────
+  cloud-self-hosted:
+    name: ${{ matrix.name }}
+    if: ${{ false }}   # ← flip to true after registering runners
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: aws x64 linux
             runs_on: [self-hosted, linux, x64, aws]
-          - name: gcp x64
+          - name: gcp x64 linux
             runs_on: [self-hosted, linux, x64, gcp]
-          - name: azure x64
+          - name: azure x64 linux
             runs_on: [self-hosted, linux, x64, azure]
     steps:
       - uses: actions/checkout@v4
-      - name: Build+Run full AVX2 probe
+      - name: Build + Run
         run: bash scripts/run_probe.sh
-      - name: Upload probe logs
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: probe-${{ matrix.name }}
           path: out/
