@@ -1,69 +1,83 @@
 # onedal-avx2-probe
 
-Экспериментальный репозиторий для решения вопроса: можно ли сделать **AVX2 минимальным baseline** для oneDAL.
+Experimental repository to answer the question: **can AVX2 be used as the minimum CPU baseline for oneDAL?**
 
-## Что делает probe
+## What the probe does
 
-`src/avx2_full_probe.cpp` проверяет:
+`src/avx2_full_probe.cpp` checks:
 
-1. **CPUID флаги** (AVX2/FMA/BMI/AVX-512)
-2. **OS/hypervisor состояние** (XSAVE/XGETBV: YMM/ZMM)
-3. **Реальное выполнение интринзиков** по bucket'ам:
-   - Bucket 1: Integer arithmetic
-   - Bucket 2: Float + FMA
-   - Bucket 3: Shuffle/Permute
-   - Bucket 4: Gather
-   - Bucket 5: Bitwise/Shift/Compare
-   - Bucket 6: Blend/Mask
-   - Bucket 7: Conversions
-   - Bucket 8: BMI1/BMI2
+1. **CPUID flags** (AVX2/FMA/BMI/AVX-512)
+2. **OS/hypervisor state** (XSAVE/XGETBV: YMM/ZMM registers enabled)
+3. **Actual intrinsic execution** across 8 buckets:
+   - Bucket 1: Integer arithmetic (epi8/16/32/64)
+   - Bucket 2: Float arithmetic + FMA
+   - Bucket 3: Shuffle / Permute
+   - Bucket 4: Gather loads
+   - Bucket 5: Bitwise / Shift / Compare
+   - Bucket 6: Blend / Mask
+   - Bucket 7: Type conversions
+   - Bucket 8: BMI1 / BMI2
 
-В конце печатает итог:
+Final verdict:
 - `✅ ALL PASS — AVX2 baseline fully functional`
 - `❌ N FAILURES — AVX2 partially broken`
 
-## Локальный запуск
+## Local run
 
 ```bash
 bash scripts/run_probe.sh
 ```
 
-Артефакты:
-- `out/probe.log`
-- `out/summary.txt`
+Artifacts written to:
+- `out/probe.log` — full output
+- `out/summary.txt` — cpu/arch/rc/verdict one-liners
 
 ## CI
 
 ### GitHub Actions
-Файл: `.github/workflows/avx2-matrix.yml`
+File: `.github/workflows/avx2-matrix.yml`
 
-Сейчас включены GitHub-hosted раннеры:
+Currently enabled runners:
+
+**Linux (GitHub-hosted):**
 - ubuntu-20.04
 - ubuntu-22.04
 - ubuntu-24.04
 
-Есть заготовка под self-hosted cloud buckets (AWS/GCP/Azure) — сейчас выключено через:
-```yaml
-if: ${{ false }}
-```
-После подключения self-hosted раннеров включается одной правкой.
+**macOS:**
+- macos-12 / macos-13 — Intel x86_64, native AVX2
+- macos-14 / macos-15 — Apple Silicon + **Rosetta 2** (x86_64 binary via `arch -x86_64`)
+  - Expected result: `❌ FATAL: AVX2 not available` — Rosetta 2 does not support AVX/AVX2
 
-### Другие CI провайдеры
-Шаблоны добавлены:
+**Windows:**
+- windows-2019 / windows-2022 — MSVC x64
+
+**Self-hosted cloud runners** (AWS/GCP/Azure) — prepared but disabled:
+```yaml
+if: ${{ false }}   # ← flip to true after registering runners
+```
+Enable with a single line change once runners are registered with matching labels.
+
+### Other CI providers
+Templates included:
 - `.gitlab-ci.yml`
 - `.circleci/config.yml`
 - `azure-pipelines.yml`
 
-## Как интерпретировать результат
+## How to interpret results
 
-- **CPUID=YES + OS AVX(YMM)=YES + all buckets PASS** → безопасно для AVX2 baseline
-- **CPUID=YES + OS AVX(YMM)=NO** → CPU умеет, но VM/OS не дает использовать AVX
-- **CPUID AVX2=NO** → baseline AVX2 не будет работать на этой машине
-- **Частичные bucket FAIL** → риск для baseline, нужна дополнительная валидация/исключения
+| Result | Meaning |
+|--------|---------|
+| CPUID AVX2=YES + OS AVX(YMM)=YES + all buckets PASS | ✅ Safe for AVX2 baseline |
+| CPUID AVX2=YES + OS AVX(YMM)=NO | ⚠️ CPU supports AVX2 but OS/hypervisor has disabled YMM state (common in some VMs) |
+| CPUID AVX2=NO | ❌ Pre-Haswell CPU, AVX2 baseline will not work |
+| ARCH=ARM | ⚠️ Not applicable (x86-only feature) |
+| x86_64 under Rosetta 2 | ❌ Rosetta does not expose AVX/AVX2 to translated binaries |
+| Partial bucket FAIL | ❌ Risk for baseline, needs further investigation |
 
-## Следующий шаг
+## Next steps
 
-Собрать матрицу результатов по провайдерам/типам инстансов и принять решение по policy:
-- hard AVX2 baseline
-- fallback path (SSE4.2)
-- или mixed dispatch policy
+Collect results across providers/instance types and decide on oneDAL policy:
+- Hard AVX2 baseline (drop SSE4.2 fallback)
+- Keep SSE4.2 fallback path
+- Mixed runtime dispatch policy
