@@ -78,13 +78,11 @@ jobs:
         run: |
           echo "=== Building x86_64 binary (cross-compile for Rosetta) ==="
           mkdir -p out
-          # Build as x86_64 explicitly — will run via Rosetta on Apple Silicon
           clang++ -O2 -target x86_64-apple-macos10.15 -mavx2 -mfma -mbmi -mbmi2 \
             -o out/avx2_full_probe src/avx2_full_probe.cpp
           echo "=== arch of binary ==="
           file out/avx2_full_probe
           echo "=== Running under Rosetta 2 ==="
-          # arch -x86_64 forces Rosetta translation
           arch -x86_64 out/avx2_full_probe | tee out/probe.log || true
           echo "Exit code: $?"
           echo "=== Expected: FATAL AVX2 not available (Rosetta blocks AVX/AVX2) ==="
