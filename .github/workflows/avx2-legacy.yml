@@ -1,0 +1,65 @@
+name: AVX2 Probe — Legacy Platforms
+
+on:
+  workflow_dispatch:
+
+jobs:
+  legacy:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux ubuntu-20.04 x64
+            runs_on: ubuntu-20.04
+            os: linux
+          - name: windows-2019 x64 msvc
+            runs_on: windows-2019
+            os: windows
+          - name: macos-12 intel x86_64
+            runs_on: macos-12
+            os: macos
+          - name: macos-13 intel x86_64
+            runs_on: macos-13
+            os: macos
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install g++ (Linux)
+        if: matrix.os == 'linux'
+        run: sudo apt-get update -q && sudo apt-get install -y g++
+
+      - name: Show CPU info (Linux/macOS)
+        if: matrix.os != 'windows'
+        run: |
+          uname -m
+          [ -f /proc/cpuinfo ] && grep -m1 "model name" /proc/cpuinfo || true
+          command -v sysctl && sysctl -n machdep.cpu.brand_string 2>/dev/null || true
+          command -v sysctl && sysctl -n hw.optional.avx2_0 2>/dev/null && echo "sysctl AVX2: YES" || echo "sysctl AVX2: NO/NA" || true
+
+      - name: Run probes (Linux/macOS)
+        if: matrix.os != 'windows'
+        run: |
+          CXX=clang++ CXXFLAGS="-O2 -msse4.2 -mavx2 -mfma -mbmi -mbmi2" bash scripts/run_probe.sh
+        continue-on-error: true
+
+      - name: Setup MSVC (Windows)
+        if: matrix.os == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Run probes (Windows)
+        if: matrix.os == 'windows'
+        shell: cmd
+        run: scripts\run_probe.bat
+        continue-on-error: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-legacy-${{ matrix.name }}
+          path: out/
