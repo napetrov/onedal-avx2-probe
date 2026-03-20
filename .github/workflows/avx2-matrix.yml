@@ -44,17 +44,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Intel Mac (x86_64) — AVX2 should work
+          # Intel Mac (x86_64) — AVX2 supported since Haswell
           - name: macos-13 intel x86_64
             runs_on: macos-13
-            arch: x86_64
-          # Apple Silicon (arm64) — AVX2 not applicable, probe exits gracefully
-          - name: macos-14 apple-silicon arm64
-            runs_on: macos-14
-            arch: arm64
-          - name: macos-15 apple-silicon arm64
-            runs_on: macos-15
-            arch: arm64
+          - name: macos-12 intel x86_64
+            runs_on: macos-12
     steps:
       - uses: actions/checkout@v4
       - name: Show CPU info
@@ -62,16 +56,9 @@ jobs:
           uname -m
           sysctl -n machdep.cpu.brand_string 2>/dev/null || true
           sysctl -n hw.optional.avx2_0 2>/dev/null && echo "AVX2 sysctl: supported" || echo "AVX2 sysctl: NOT reported"
-      - name: Build + Run (Intel)
-        if: matrix.arch == 'x86_64'
-        run: |
-          CXX=g++ CXXFLAGS="-O2 -mavx2 -mfma -mbmi -mbmi2" bash scripts/run_probe.sh
+      - name: Build + Run
+        run: CXX=clang++ CXXFLAGS="-O2 -mavx2 -mfma -mbmi -mbmi2" bash scripts/run_probe.sh
         continue-on-error: true
-      - name: Build + Run (Apple Silicon — ARM, no AVX2)
-        if: matrix.arch == 'arm64'
-        run: |
-          # On ARM, probe should detect ARM and exit gracefully (rc=2)
-          CXX=clang++ CXXFLAGS="-O2" bash scripts/run_probe.sh || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
