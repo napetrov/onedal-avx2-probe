@@ -1,16 +1,107 @@
 trigger:
 - main
 
-pool:
-  vmImage: ubuntu-22.04
+stages:
+- stage: Probe
+  displayName: AVX2 + ISA Dispatch Probe
 
-steps:
-- checkout: self
-- script: |
-    bash scripts/run_probe.sh
-  displayName: Run AVX2 full probe
-- task: PublishBuildArtifacts@1
-  inputs:
-    PathtoPublish: 'out'
-    ArtifactName: 'avx2-probe'
-    publishLocation: 'Container'
+  jobs:
+  # ── Linux ──────────────────────────────────────────────────────────────────
+  - job: Linux_ubuntu2204
+    displayName: Linux ubuntu-22.04 x64
+    pool:
+      vmImage: ubuntu-22.04
+    steps:
+    - checkout: self
+    - script: bash scripts/run_probe.sh
+      displayName: Run ISA + AVX2 probe
+    - task: PublishBuildArtifacts@1
+      condition: always()
+      inputs:
+        PathtoPublish: out
+        ArtifactName: probe-linux-ubuntu2204
+
+  - job: Linux_ubuntu2404
+    displayName: Linux ubuntu-24.04 x64
+    pool:
+      vmImage: ubuntu-24.04
+    steps:
+    - checkout: self
+    - script: bash scripts/run_probe.sh
+      displayName: Run ISA + AVX2 probe
+    - task: PublishBuildArtifacts@1
+      condition: always()
+      inputs:
+        PathtoPublish: out
+        ArtifactName: probe-linux-ubuntu2404
+
+  # ── Windows ────────────────────────────────────────────────────────────────
+  - job: Windows_2022
+    displayName: Windows 2022 x64 MSVC
+    pool:
+      vmImage: windows-2022
+    steps:
+    - checkout: self
+    - script: scripts\run_probe.bat
+      displayName: Run ISA + AVX2 probe (MSVC)
+    - task: PublishBuildArtifacts@1
+      condition: always()
+      inputs:
+        PathtoPublish: out
+        ArtifactName: probe-windows-2022
+
+  - job: Windows_2019
+    displayName: Windows 2019 x64 MSVC
+    pool:
+      vmImage: windows-2019
+    steps:
+    - checkout: self
+    - script: scripts\run_probe.bat
+      displayName: Run ISA + AVX2 probe (MSVC)
+    - task: PublishBuildArtifacts@1
+      condition: always()
+      inputs:
+        PathtoPublish: out
+        ArtifactName: probe-windows-2019
+
+  # ── macOS ──────────────────────────────────────────────────────────────────
+  - job: macOS_13_intel
+    displayName: macOS 13 Intel x86_64
+    pool:
+      vmImage: macOS-13
+    steps:
+    - checkout: self
+    - script: |
+        CXX=clang++ CXXFLAGS="-O2 -msse4.2 -mavx2 -mfma -mbmi -mbmi2" bash scripts/run_probe.sh
+      displayName: Run ISA + AVX2 probe (Intel Mac)
+    - task: PublishBuildArtifacts@1
+      condition: always()
+      inputs:
+        PathtoPublish: out
+        ArtifactName: probe-macos-13-intel
+
+  - job: macOS_14_rosetta
+    displayName: macOS 14 Apple Silicon (Rosetta x86_64)
+    pool:
+      vmImage: macOS-14
+    steps:
+    - checkout: self
+    - script: |
+        # Install Rosetta 2
+        softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
+        # Build x86_64 binary
+        mkdir -p out
+        clang++ -O2 -target x86_64-apple-macos10.15 -msse4.2 -mavx2 -mfma -mbmi -mbmi2 \
+          -o out/isa_dispatch_probe src/isa_dispatch_probe.cpp
+        clang++ -O2 -target x86_64-apple-macos10.15 -mavx2 -mfma -mbmi -mbmi2 \
+          -o out/avx2_full_probe src/avx2_full_probe.cpp
+        echo "=== ISA Dispatch probe (via Rosetta) ==="
+        arch -x86_64 out/isa_dispatch_probe | tee out/isa_probe.log || true
+        echo "=== AVX2 Full probe (via Rosetta) ==="
+        arch -x86_64 out/avx2_full_probe | tee out/avx2_probe.log || true
+      displayName: Build x86_64 + Run under Rosetta 2
+    - task: PublishBuildArtifacts@1
+      condition: always()
+      inputs:
+        PathtoPublish: out
+        ArtifactName: probe-macos-14-rosetta

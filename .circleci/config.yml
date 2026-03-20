@@ -1,18 +1,33 @@
 version: 2.1
 
 jobs:
-  avx2_probe:
+  probe-linux:
     docker:
       - image: gcc:13
     steps:
       - checkout
       - run:
-          name: Run AVX2 full probe
+          name: Run ISA + AVX2 probe (Linux x64)
+          command: bash scripts/run_probe.sh
+      - store_artifacts:
+          path: out
+
+  probe-linux-ubuntu:
+    docker:
+      - image: ubuntu:22.04
+    steps:
+      - checkout
+      - run:
+          name: Install g++
+          command: apt-get update -q && apt-get install -y g++
+      - run:
+          name: Run ISA + AVX2 probe (Ubuntu 22.04)
           command: bash scripts/run_probe.sh
       - store_artifacts:
           path: out
 
 workflows:
-  avx2:
+  avx2-isa-probe:
     jobs:
-      - avx2_probe
+      - probe-linux
+      - probe-linux-ubuntu
