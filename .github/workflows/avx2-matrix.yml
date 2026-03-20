@@ -1,0 +1,56 @@
+name: AVX2 Full Probe Matrix
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  github-hosted-linux:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: github ubuntu-20.04 x64
+            runs_on: ubuntu-20.04
+          - name: github ubuntu-22.04 x64
+            runs_on: ubuntu-22.04
+          - name: github ubuntu-24.04 x64
+            runs_on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build+Run full AVX2 probe
+        run: bash scripts/run_probe.sh
+      - name: Upload probe logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe-${{ matrix.name }}
+          path: out/
+
+  provider-self-hosted:
+    name: ${{ matrix.name }}
+    if: ${{ false }} # Enable after adding matching self-hosted labels
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: aws x64
+            runs_on: [self-hosted, linux, x64, aws]
+          - name: gcp x64
+            runs_on: [self-hosted, linux, x64, gcp]
+          - name: azure x64
+            runs_on: [self-hosted, linux, x64, azure]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build+Run full AVX2 probe
+        run: bash scripts/run_probe.sh
+      - name: Upload probe logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: probe-${{ matrix.name }}
+          path: out/

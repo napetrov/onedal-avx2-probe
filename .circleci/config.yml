@@ -1,0 +1,21 @@
+version: 2.1
+
+jobs:
+  avx2_probe:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - run:
+          name: Install build deps
+          command: sudo apt-get update && sudo apt-get install -y g++
+      - run:
+          name: Run AVX2 probe
+          command: bash scripts/run_probe.sh
+      - store_artifacts:
+          path: out
+
+workflows:
+  avx2:
+    jobs:
+      - avx2_probe

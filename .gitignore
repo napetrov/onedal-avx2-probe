@@ -1,0 +1,7 @@
+out/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+avx2_full_probe

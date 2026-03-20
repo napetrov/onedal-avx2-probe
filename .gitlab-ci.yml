@@ -1,0 +1,11 @@
+stages: [probe]
+
+avx2_probe:
+  stage: probe
+  image: gcc:13
+  script:
+    - bash scripts/run_probe.sh
+  artifacts:
+    when: always
+    paths:
+      - out/

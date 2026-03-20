@@ -1,0 +1,16 @@
+trigger:
+- main
+
+pool:
+  vmImage: ubuntu-22.04
+
+steps:
+- checkout: self
+- script: |
+    bash scripts/run_probe.sh
+  displayName: Run AVX2 full probe
+- task: PublishBuildArtifacts@1
+  inputs:
+    PathtoPublish: 'out'
+    ArtifactName: 'avx2-probe'
+    publishLocation: 'Container'
