@@ -44,20 +44,50 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Intel Mac (x86_64) — AVX2 supported since Haswell
-          - name: macos-13 intel x86_64
+          # Intel Mac — native x86_64, AVX2 expected to work
+          - name: macos-13 intel x86_64 native
             runs_on: macos-13
-          - name: macos-12 intel x86_64
+            mode: native
+          - name: macos-12 intel x86_64 native
             runs_on: macos-12
+            mode: native
+          # Apple Silicon — x86_64 binary via Rosetta 2 (AVX2 NOT supported by Rosetta)
+          - name: macos-14 apple-silicon rosetta2 x86_64
+            runs_on: macos-14
+            mode: rosetta
+          - name: macos-15 apple-silicon rosetta2 x86_64
+            runs_on: macos-15
+            mode: rosetta
     steps:
       - uses: actions/checkout@v4
       - name: Show CPU info
         run: |
           uname -m
-          sysctl -n machdep.cpu.brand_string 2>/dev/null || true
-          sysctl -n hw.optional.avx2_0 2>/dev/null && echo "AVX2 sysctl: supported" || echo "AVX2 sysctl: NOT reported"
-      - name: Build + Run
+          sysctl -n machdep.cpu.brand_string 2>/dev/null || sysctl -n hw.model || true
+          sysctl -n hw.optional.avx2_0 2>/dev/null && echo "AVX2 sysctl: YES" || echo "AVX2 sysctl: NO"
+          # Check if Rosetta is available
+          if [ "${{ matrix.mode }}" = "rosetta" ]; then
+            softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
+          fi
+      - name: Build + Run (native Intel)
+        if: matrix.mode == 'native'
         run: CXX=clang++ CXXFLAGS="-O2 -mavx2 -mfma -mbmi -mbmi2" bash scripts/run_probe.sh
+        continue-on-error: true
+      - name: Build x86_64 + Run under Rosetta 2
+        if: matrix.mode == 'rosetta'
+        run: |
+          echo "=== Building x86_64 binary (cross-compile for Rosetta) ==="
+          # Build as x86_64 explicitly — will run via Rosetta on Apple Silicon
+          clang++ -O2 -target x86_64-apple-macos10.15 -mavx2 -mfma -mbmi -mbmi2 \
+            -o out/avx2_full_probe src/avx2_full_probe.cpp
+          echo "=== arch of binary ==="
+          file out/avx2_full_probe
+          echo "=== Running under Rosetta 2 ==="
+          mkdir -p out
+          # arch -x86_64 forces Rosetta translation
+          arch -x86_64 out/avx2_full_probe | tee out/probe.log || true
+          echo "Exit code: $?"
+          echo "=== Expected: FATAL AVX2 not available (Rosetta blocks AVX/AVX2) ==="
         continue-on-error: true
       - uses: actions/upload-artifact@v4
         if: always()
