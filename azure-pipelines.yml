@@ -55,41 +55,7 @@ stages:
         PathtoPublish: out
         ArtifactName: probe-windows-2022
 
-  - job: Windows_2019
-    displayName: Windows 2019 x64 MSVC
-    pool:
-      vmImage: windows-2019
-    steps:
-    - checkout: self
-    - task: BatchScript@1
-      inputs:
-        filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat'
-        modifyEnvironment: true
-      displayName: Setup MSVC x64
-    - script: scripts\run_probe.bat
-      displayName: Run ISA + AVX2 probe (MSVC)
-    - task: PublishBuildArtifacts@1
-      condition: always()
-      inputs:
-        PathtoPublish: out
-        ArtifactName: probe-windows-2019
-
   # ── macOS ──────────────────────────────────────────────────────────────────
-  - job: macOS_13_intel
-    displayName: macOS 13 Intel x86_64
-    pool:
-      vmImage: macOS-13
-    steps:
-    - checkout: self
-    - script: |
-        CXX=clang++ CXXFLAGS="-O2 -msse4.2 -mavx2 -mfma -mbmi -mbmi2" bash scripts/run_probe.sh
-      displayName: Run ISA + AVX2 probe (Intel Mac)
-    - task: PublishBuildArtifacts@1
-      condition: always()
-      inputs:
-        PathtoPublish: out
-        ArtifactName: probe-macos-13-intel
-
   - job: macOS_14_rosetta
     displayName: macOS 14 Apple Silicon (Rosetta x86_64)
     pool:
@@ -97,9 +63,7 @@ stages:
     steps:
     - checkout: self
     - script: |
-        # Install Rosetta 2
         softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
-        # Build x86_64 binary
         mkdir -p out
         clang++ -O2 -target x86_64-apple-macos10.15 -msse4.2 -mavx2 -mfma -mbmi -mbmi2 \
           -o out/isa_dispatch_probe src/isa_dispatch_probe.cpp
@@ -115,3 +79,27 @@ stages:
       inputs:
         PathtoPublish: out
         ArtifactName: probe-macos-14-rosetta
+
+  - job: macOS_15_rosetta
+    displayName: macOS 15 Apple Silicon (Rosetta x86_64)
+    pool:
+      vmImage: macOS-15
+    steps:
+    - checkout: self
+    - script: |
+        softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
+        mkdir -p out
+        clang++ -O2 -target x86_64-apple-macos10.15 -msse4.2 -mavx2 -mfma -mbmi -mbmi2 \
+          -o out/isa_dispatch_probe src/isa_dispatch_probe.cpp
+        clang++ -O2 -target x86_64-apple-macos10.15 -mavx2 -mfma -mbmi -mbmi2 \
+          -o out/avx2_full_probe src/avx2_full_probe.cpp
+        echo "=== ISA Dispatch probe (via Rosetta) ==="
+        arch -x86_64 out/isa_dispatch_probe | tee out/isa_probe.log || true
+        echo "=== AVX2 Full probe (via Rosetta) ==="
+        arch -x86_64 out/avx2_full_probe | tee out/avx2_probe.log || true
+      displayName: Build x86_64 + Run under Rosetta 2
+    - task: PublishBuildArtifacts@1
+      condition: always()
+      inputs:
+        PathtoPublish: out
+        ArtifactName: probe-macos-15-rosetta
