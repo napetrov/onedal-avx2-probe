@@ -14,8 +14,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: linux ubuntu-20.04 x64
-            runs_on: ubuntu-20.04
           - name: linux ubuntu-22.04 x64
             runs_on: ubuntu-22.04
           - name: linux ubuntu-24.04 x64
@@ -44,13 +42,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Intel Mac — native x86_64, AVX2 expected to work
-          - name: macos-13 intel x86_64 native
-            runs_on: macos-13
-            mode: native
-          - name: macos-12 intel x86_64 native
-            runs_on: macos-12
-            mode: native
           # Apple Silicon — x86_64 binary via Rosetta 2 (AVX2 NOT supported by Rosetta)
           - name: macos-14 apple-silicon rosetta2 x86_64
             runs_on: macos-14
@@ -69,10 +60,6 @@ jobs:
           if [ "${{ matrix.mode }}" = "rosetta" ]; then
             softwareupdate --install-rosetta --agree-to-license 2>/dev/null || true
           fi
-      - name: Build + Run (native Intel)
-        if: matrix.mode == 'native'
-        run: CXX=clang++ CXXFLAGS="-O2 -mavx2 -mfma -mbmi -mbmi2" bash scripts/run_probe.sh
-        continue-on-error: true
       - name: Build x86_64 + Run under Rosetta 2
         if: matrix.mode == 'rosetta'
         run: |
@@ -103,9 +90,6 @@ jobs:
         include:
           - name: windows-2022 x64 msvc
             runs_on: windows-2022
-            compiler: msvc
-          - name: windows-2019 x64 msvc
-            runs_on: windows-2019
             compiler: msvc
     steps:
       - uses: actions/checkout@v4

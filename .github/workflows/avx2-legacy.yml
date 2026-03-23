@@ -3,6 +3,10 @@ name: AVX2 Probe — Legacy Platforms
 on:
   workflow_dispatch:
 
+# NOTE: ubuntu-20.04, windows-2019, macos-12, macos-13 are deprecated on
+# GitHub-hosted runners. This workflow uses best-effort continues-on-error.
+# Jobs may be queued/cancelled if runners are unavailable.
+
 jobs:
   legacy:
     name: ${{ matrix.name }}
@@ -18,9 +22,6 @@ jobs:
           - name: windows-2019 x64 msvc
             runs_on: windows-2019
             os: windows
-          - name: macos-12 intel x86_64
-            runs_on: macos-12
-            os: macos
           - name: macos-latest intel x86_64
             runs_on: macos-latest
             os: macos
